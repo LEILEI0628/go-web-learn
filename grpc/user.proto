@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+option go_package = "go-web-learn/grpc";
+// protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative user.proto
+message User {
+  // Protobuf对前几个字段有性能优化
+  // 需要给每个字段编号，编号不能重复但可以不连续
+  // 在后续版本迭代中需要删除字段也不能复用同一编号（会破坏兼容性）
+  int64 id = 1;
+  string name = 2;
+  //  int32 age=3;
+  string avatar = 4;
+  map<string, string> attributes = 5;
+  optional int32 age = 6; // 可选择类型（指针类型，不推荐使用）
+  Address addr = 8;
+  repeated string nicknames = 9; // 可重复类型
+  Gender gender = 10;
+}
+
+message Address{
+
+}
+
+enum Gender{
+  Unknown = 0;
+  Male = 1;
+  Female = 2;
+}
+
+service UserService{
+  rpc GetById(GetByIdReq) returns (GetByIdResp);
+}
+
+message GetByIdReq{
+  int64 id = 1;
+}
+
+message GetByIdResp{
+  User user = 1;
+}

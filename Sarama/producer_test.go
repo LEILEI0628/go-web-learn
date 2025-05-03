@@ -30,7 +30,7 @@ func TestSyncProducer(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestAsyncpRroducer(t *testing.T) {
+func TestAsyncProducer(t *testing.T) {
 	cfg := sarama.NewConfig()
 	cfg.Producer.Return.Successes = true
 	client, err := sarama.NewClient(addrs, cfg)

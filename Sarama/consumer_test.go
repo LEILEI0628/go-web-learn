@@ -12,8 +12,9 @@ import (
 
 func TestConsumer(t *testing.T) {
 	cfg := sarama.NewConfig()
+	cfg.Consumer.Offsets.Initial = sarama.OffsetOldest // 设置偏移量为从最旧开始消费
 	// 消费者归于消费者组，消费者组可以理解为业务
-	consumer, err := sarama.NewConsumerGroup(addrs, "test_group", cfg)
+	consumer, err := sarama.NewConsumerGroup(addrs, "TestGroup", cfg)
 	require.NoError(t, err)
 
 	start := time.Now()
@@ -22,7 +23,7 @@ func TestConsumer(t *testing.T) {
 	//defer cancel()
 	// 另一种写法
 	ctx, cancel := context.WithCancel(context.Background())
-	time.AfterFunc(time.Second*5, cancel)
+	time.AfterFunc(time.Second*15, cancel)
 	err = consumer.Consume(ctx, []string{"TestTopic"}, testConsumerGroupHandler{})
 	t.Log(err, time.Since(start).String())
 }
@@ -31,7 +32,7 @@ type testConsumerGroupHandler struct {
 }
 
 func (h testConsumerGroupHandler) Setup(session sarama.ConsumerGroupSession) error {
-	log.Printf("SetUp")
+	log.Println("SetUp")
 	// TODO 此处似乎有BUG
 	// topic => 偏移量
 	partitions := session.Claims()["TestTopic"]
@@ -43,15 +44,30 @@ func (h testConsumerGroupHandler) Setup(session sarama.ConsumerGroupSession) err
 }
 
 func (h testConsumerGroupHandler) Cleanup(session sarama.ConsumerGroupSession) error {
-	log.Printf("Cleanup")
+	log.Println("Cleanup")
 	return nil
 }
 
 func (h testConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	// session：与kafka的会话（从建立连接到断开连接的时间）
 	msgs := claim.Messages()
-	single(msgs, session) // 单个消费模式
-	return nil            // msgs被人关闭（退出消费逻辑，一般是服务关闭时）
+	for msg := range msgs {
+		log.Println(string(msg.Value)) // 单个消费模式
+		//var bizMsg MyBizMsg
+		//err := json.Unmarshal(msg.Value, &bizMsg)
+		//if err != nil {
+		//	// 消费消息出错：大多数情况下是重试，记录日志
+		//	log.Println("消费消息出错")
+		//	continue
+		//  return
+		//}
+		log.Printf("消费消息: Topic=%s, Partition=%d, Offset=%d, Value=%s",
+			msg.Topic, msg.Partition, msg.Offset, string(msg.Value))
+		session.MarkMessage(msg, "") // 标记为消费成功（提交）
+		//session.Commit()
+	}
+	//single(claim, session) // 单个消费模式
+	return nil // msgs被人关闭（退出消费逻辑，一般是服务关闭时）
 }
 
 func sync(msgs <-chan *sarama.ConsumerMessage, session sarama.ConsumerGroupSession) {
@@ -107,20 +123,23 @@ func sync(msgs <-chan *sarama.ConsumerMessage, session sarama.ConsumerGroupSessi
 	}
 }
 
-func single(msgs <-chan *sarama.ConsumerMessage, session sarama.ConsumerGroupSession) {
+func single(claim sarama.ConsumerGroupClaim, session sarama.ConsumerGroupSession) {
+	msgs := claim.Messages()
 	for msg := range msgs {
-		log.Println(string(msg.Value)) // 单个消费模式
-		//var bizMsg MyBizMsg
-		//err := json.Unmarshal(msg.Value, &bizMsg)
-		//if err != nil {
-		//	// 消费消息出错：大多数情况下是重试，记录日志
-		//	log.Println("消费消息出错")
-		//	continue
-		//  return
-		//}
-		session.MarkMessage(msg, "") // 标记为消费成功（提交）
+		//msg := msg
+		func(msg *sarama.ConsumerMessage) {
+			log.Println(string(msg.Value)) // 单个消费模式
+			//var bizMsg MyBizMsg
+			//err := json.Unmarshal(msg.Value, &bizMsg)
+			//if err != nil {
+			//	// 消费消息出错：大多数情况下是重试，记录日志
+			//	log.Println("消费消息出错")
+			//	continue
+			//  return
+			//}
+			session.MarkMessage(msg, "") // 标记为消费成功（提交）
+		}(msg)
 	}
-	return
 }
 
 //type MyBizMsg struct {
